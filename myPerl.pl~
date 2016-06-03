@@ -1,0 +1,35 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+
+#version 1.1
+
+my @array=undef;
+#my $filename = 'a.txt';
+my $filename = '../linux-stable-security/toshiba_acpi.log';
+open(my $file, '<:encoding(UTF-8)', $filename) 
+	or die "could not open file '$filename' $!";
+
+#Concatate the the whole file
+my $myFile = undef;
+while(<$file>){
+	$myFile .= $_;
+}
+
+#Match the whole file for changes in define
+my @plus = ($myFile =~ m/^\+#define ([[:alnum:]_]+)/gmi );
+my @minus = ($myFile =~ m/^-#define ([[:alnum:]_]+)/gmi );
+
+#check for match
+#Currently only can work per commit due + and - can be in different commits therefore not accurate
+foreach my $m (@minus){
+	foreach my $p (@plus){
+		if(!( $m =~ m/VERSION/)){ #exclude version
+			if($m eq $p){
+				print "$m\n";
+				last; #prevent double match
+			}
+		}
+	}
+}
