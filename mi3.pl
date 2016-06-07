@@ -103,9 +103,9 @@ while (my $row = <stdin>){
 		$d {$tmpCommit}{$nline}{p} = $nline;
 	
 		#Hash map to find the original author that wrote the if statement
-		$d2{$1}{pif} = $tmpAuthor;
-		$d2{$1}{commit} = $tmpCommit;
-		$d2{$1}{lineNo} = $nline;
+		$d2{$1}{pif} = $tmpAuthor; #original author that added the if statement
+		$d2{$1}{commit} = $tmpCommit; #commit to find the if statement
+		$d2{$1}{lineNo} = $nline; #line number of the added if statement 
 	} 
 
 	#find +if and save them with the author, commit and line number
@@ -123,8 +123,10 @@ while (my $row = <stdin>){
 }
 
 
-my $aa=1;
-my $author;
+my $originalAuthor;
+my $originalCommit;
+my $originalLine;
+
 my %bad_author = ();
 foreach my $commit (keys (%d) ) {
 	foreach my $line (keys %{ $d{$commit} } ){
@@ -133,11 +135,16 @@ foreach my $commit (keys (%d) ) {
 		if(exists $d{$commit}{$line}{p} && exists $d{$commit}{$line-1}{n}
 			&& $d{$commit}{$line}{pif} ne $d{$commit}{$line-1}{nif}){
 			
-			my $pline = $d{$commit}{$line}{p};
+			#lines of the remove&add commits
+			my $pline = $d{$commit}{$line}{p}; 
 			my $nline = $d{$commit}{$line-1}{n};
-			$author = $d2{ $d{$commit}{$line-1}{nif} }{pif};   #Find the original author of the if statement	
+
+			$originalAuthor = $d2{ $d{$commit}{$line-1}{nif} }{pif};   #original author that added the if statement
+			$originalCommit = $d2{ $d{$commit}{$line-1}{nif} }{commit};   #original author's commit
+			$originalLine = $d2{ $d{$commit}{$line-1}{nif} }{lineNo};   #original author's line Number 
 			
-			push (@{$bad_author {$d{$commit}{$line}{pauthor}}}, "$pline:$nline\nCommit:$commit\nFile: $d{$commit}{$line}{file}\nLineNo:$d{$commit}{$line}{lineNo}\nnif:$d{$commit}{$line-1}{nif}\npif:$d{$commit}{$line}{pif}" );
+			push (@{$bad_author {$originalAuthor}}, 
+				"$pline:$nline\nCommit:$commit\nFile: $d{$commit}{$line}{file}\nLineNo:$d{$commit}{$line}{lineNo}\noriginalCommit:$originalCommit\noriginalLine:$originalLine\nnif:$d{$commit}{$line-1}{nif}\npif:$d{$commit}{$line}{pif}" ); #{$d{$commit}{$line}{pauthor}}
 		}	
 	
 	}
@@ -163,6 +170,7 @@ foreach my $commit (keys (%d) ) {
 
 my $nextCommit;
 my $filename;
+
 my $index=1;
 my $count=1;
 
@@ -170,20 +178,24 @@ foreach my $k (keys (%bad_author)) {
 	printf "%-80s %-0s \n", $k, "| " .  scalar (@{$bad_author {$k}});
 #	print "$k |" . scalar (@{$bad_author {$k}}) . "\n";
 	foreach my $lines (@{$bad_author {$k}}) {
-		print($count++." of ".scalar @{$bad_author {$k}}."\n");
-		print "$lines\n";
-		if($lines =~ m/Commit:([\w]{40})\nFile: ([\w\/.\-\_]*)\nLineNo:([\w]*)/){
-#			print("Commit:$1\n");
-#			print("File:$2\n");
-#			print("Lineno:$3\n");
+#		print "$lines\n";
+		if($lines =~ m/(.*)\nCommit:([\w]{40})\nFile: ([\w\/.\-\_]*)\nLineNo:([\w]*)\noriginalCommit:([\w]{40})\noriginalLine:([\w]*)\nnif:(.*)\npif:(.*)/){
+			#All variable assignments
+		
+			my $line = $1;
+			my $curCommit=$2;
+			my $filePath=$3;
+			my $lineNumber = $4;
+			my $oCommit = $5;
+			my $oLine = $6;
+			my $nif = $7;
+			my $pif = $8;
+			
 			#Now I have the Current Commit
 			#Need to get the next commit
-			my $curCommit=$1;
-			my $filePath=$2;
 
 			#Getting the file name
 			if($filePath =~ m/([\w.\-\_]*)$/){
-				#	print("Filename: $1\n");
 					$filename = $1;
 			}
 
@@ -191,23 +203,33 @@ foreach my $k (keys (%bad_author)) {
 			my $output = `git log -n 2 $curCommit | grep commit`;
 			if($output =~ m/commit [\w]{40}\ncommit ([\w]{40})/){
 				$nextCommit = $1;
-				print ("Next Commit: $nextCommit \n"); #Get the next commit
 			}else{
 				print("No next Commit");
 			}
+			
+			#All the print out here
+			print("Entries: ".$count++." of ".scalar @{$bad_author {$k}}."\n"); #Print the count out of number of entries
+			print("Filepath: $filePath\n");
+			print("Line originally added: $oCommit ($oLine)\n");
+			print("Added and replace: $line\n");
+			print("CurCommit: $curCommit\nnextCommit: $nextCommit\n");
+			print("Line Number: $lineNumber\n");
+			print("nif:$nif\npif:$pif\n");
+			print("\n\n");
 
-			#Checkout current file then copy outside
-			system("mkdir -p ../output2/$filename$index");print("\n");
-			#Apply git diff from current and next to get the patch
-			system("git diff --no-prefix $curCommit $nextCommit $filePath > ../output2/".$filename.$index."/".$filename."diff"); print("\n");
-			system("git checkout $curCommit $filePath");print("\n");
-			system("cp $filePath ../output2/$filename$index/".$filename."Curr.c");print("\n");
-			system("echo '$lines' > ../output2/$filename$index/log.txt"); print("\n");
+			#All the commands here!
+			#		#Checkout current file then copy outside 
+			#		system("mkdir -p ../output2/$filename$index");print("\n");
+			#		#Apply git diff from current and next to get the patch
+			#		system("git diff --no-prefix $curCommit $nextCommit $filePath > ../output2/".$filename.$index."/".$filename."diff"); print("\n");
+			#		system("git checkout $curCommit $filePath");print("\n");
+			#		system("cp $filePath ../output2/$filename$index/".$filename."Curr.c");print("\n");
+			#		system("echo '$lines' > ../output2/$filename$index/log.txt"); print("\n");
 
-			system("git checkout $nextCommit $filePath");print("\n");
-			system("cp $filePath ../output2/$filename$index/".$filename."Next.c");print("\n");
-#			system("");
-			$index++;
+			#		system("git checkout $nextCommit $filePath");print("\n");
+			#		system("cp $filePath ../output2/$filename$index/".$filename."Next.c");print("\n");
+#			#		system("");
+			#		$index++;
 		}
 	}
 	$count=1;
